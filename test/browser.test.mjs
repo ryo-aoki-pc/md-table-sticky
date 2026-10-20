@@ -204,6 +204,28 @@ async function createPage(directory, version) {
     if (window.__workaroundTable) window.__workaroundTable.style.minWidth = "1800px";
     window.__workaroundC = document.querySelector("#workaround-c table");
     if (window.__workaroundC) window.__workaroundC.style.minWidth = "1800px";
+    // 固定する行を増やすと、自動の列が 1 から 2 へ広がる表を用意する。
+    const autoColumnsSection = document.createElement("div");
+    autoColumnsSection.className = "md";
+    autoColumnsSection.id = "auto-columns-case";
+    const autoColumnsTable = document.createElement("table");
+    autoColumnsTable.style.minWidth = "1800px";
+    const autoColumnsBody = autoColumnsTable.createTBody();
+    for (let r = 0; r < 22; r++) {
+      const row = autoColumnsBody.insertRow();
+      for (let c = 0; c < 3; c++) {
+        if (r === 1 && c === 1) continue;
+        const cell = document.createElement(r === 0 || c === 0 ? "th" : "td");
+        if (r === 1 && c === 0) cell.colSpan = 2;
+        cell.textContent = r === 1 && c === 0 ? "結合した行見出し" : "自動列の値 " + r + "-" + c;
+        if (c === 2) cell.style.minWidth = "1400px";
+        else if (cell.colSpan === 1) cell.style.minWidth = "100px";
+        row.append(cell);
+      }
+    }
+    autoColumnsSection.append(autoColumnsTable);
+    document.body.append(autoColumnsSection);
+    window.__autoColumnsTable = autoColumnsTable;
     window.__beforeHtml = Array.from(document.querySelectorAll(".md"), md => md.innerHTML);
     window.__nestedBefore = window.__fixtureTables.G.querySelector("table").outerHTML;
     window.__smallBefore = { text: window.__fixtureTables.F.textContent, rows: window.__fixtureTables.F.rows.length };
@@ -677,13 +699,20 @@ async function exerciseControls(version) {
   const checks = [];
   const check = (pass, message) => checks.push({ pass: !!pass, message });
   const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const waitLayout = async predicate => {
+    const started = performance.now();
+    while (!predicate() && performance.now() - started < 1500) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    return predicate();
+  };
   const state = window.__mdTableSticky;
   const barOf = record => record.bar?.element || null;
   const action = (record, name) => barOf(record).querySelector('[data-md-table-sticky-action="' + name + '"]');
   const count = (record, name) => barOf(record).querySelector('[data-md-table-sticky-count="' + name + '"]').textContent;
   const records = Array.from(state.records.values());
   const bars = Array.from(document.querySelectorAll('[data-md-table-sticky-bar]'));
-  const expected = records.filter(record => !record.skipped && (record.layout?.rows || record.layout?.cols || record.override.rows !== null || record.override.cols !== null));
+  const expected = records.filter(record => !record.skipped && (record.region.rows || record.region.cols));
   check(bars.length === expected.length, '固定の対象になる表ごとに帯を 1 つ置く');
   for (const record of records) {
     const bar = barOf(record);
@@ -782,6 +811,28 @@ async function exerciseControls(version) {
   await frame();
   check(c.layout.cols === 2, '自動を押すと表 C の 2 列へ戻す');
   inspect(c);
+  const autoColumns = state.records.get(window.__autoColumnsTable);
+  check(autoColumns.layout.rows === 1 && autoColumns.layout.cols === 1 && autoColumns.override.cols === null, '自動列の標本は 1 行 1 列から始める');
+  action(autoColumns, 'rows-plus').click();
+  await frame();
+  const merged = window.__autoColumnsTable.rows[1].cells[0];
+  check(autoColumns.layout.rows === 2 && autoColumns.layout.cols === 2 && autoColumns.override.cols === null, '行を手動で増やすと結合セルに合わせて自動の列を 2 へ広げる');
+  check(getComputedStyle(merged).position === 'sticky' && merged.style.left === '0px', '新しく固定した結合セルを左にも固定する');
+  inspect(autoColumns);
+  action(autoColumns, 'rows-minus').click();
+  await frame();
+  check(autoColumns.layout.rows === 1 && autoColumns.layout.cols === 1 && autoColumns.override.cols === null, '行を減らすと自動の列も 1 へ戻す');
+  inspect(autoColumns);
+  action(autoColumns, 'rows-plus').click();
+  await frame();
+  action(autoColumns, 'cols-minus').click();
+  await frame();
+  check(autoColumns.layout.rows === 2 && autoColumns.layout.cols === 0 && autoColumns.override.cols === 0 && !autoColumns.layout.roles.some(role => role.left), '広がった自動の列を減らすと使えない境目 1 を飛ばして 0 にする');
+  inspect(autoColumns);
+  action(autoColumns, 'auto').click();
+  await frame();
+  check(autoColumns.layout.rows === 1 && autoColumns.layout.cols === 1 && autoColumns.override.rows === null && autoColumns.override.cols === null, '自動列の標本も自動へ戻す');
+  inspect(autoColumns);
   const f = state.records.get(window.__fixtureTables.F);
   check(f.layout.cols === 0 && f.layout.colOffsets[1] > f.scroll.clientWidth / 2, '小さい表 F は半分の上限で列を外す');
   check(!!barOf(f), '行を固定する表 F にも帯を出す');
@@ -797,6 +848,34 @@ async function exerciseControls(version) {
   inspect(f);
   action(f, 'auto').click();
   await frame();
+  inspect(f);
+  const originalSmallScrollStyle = f.scroll.getAttribute('style');
+  try {
+    f.scroll.style.setProperty('max-height', '30px', 'important');
+    check(await waitLayout(() => f.layout?.rows === 0 && f.layout?.cols === 0), '小さい表の高さを狭めると両方向の自動固定を外す');
+    const keptBar = !!barOf(f)?.isConnected;
+    check(keptBar, '両方向とも上限で 0 になっても帯を残す');
+    check(f.override.rows === null && f.override.cols === null, '両方向とも上限で外した表も自動の状態を保つ');
+    if (keptBar) {
+      inspect(f);
+      check(!action(f, 'rows-plus').disabled && !action(f, 'cols-plus').disabled, '両方向とも自動で 0 の帯から数を増やせる');
+      action(f, 'rows-plus').click();
+      action(f, 'cols-plus').click();
+      await frame();
+      check(f.layout.rows === 1 && f.layout.cols === 1 && f.override.rows === 1 && f.override.cols === 1, '両方向の + で半分の上限より選んだ数を優先して固定し直す');
+      check(f.layout.roles.some(role => role.top && role.left) && getComputedStyle(f.table).borderCollapse === 'separate', '両方向を選び直すと角の固定と罫線の付け直しを戻す');
+      inspect(f);
+    }
+  } finally {
+    if (barOf(f) && (f.override.rows !== null || f.override.cols !== null)) action(f, 'auto').click();
+    if (originalSmallScrollStyle === null) {
+      f.scroll.getAttribute('style');
+      f.scroll.removeAttribute('style');
+    } else {
+      f.scroll.setAttribute('style', originalSmallScrollStyle);
+    }
+  }
+  check(await waitLayout(() => f.layout?.rows === 1 && f.layout?.cols === 0), '小さい表の包みを元に戻すと自動の行 1・列 0 へ戻す');
   inspect(f);
   const displays = new Map(bars.map(bar => [bar, getComputedStyle(bar).display]));
   window.dispatchEvent(new Event('beforeprint'));

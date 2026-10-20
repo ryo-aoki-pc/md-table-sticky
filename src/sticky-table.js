@@ -59,30 +59,33 @@
     }));
   }
 
-  function frozenRegion(model) {
+  function frozenRegion(model, selectedRows = null) {
     const { rowCount, colCount, cells, grid } = model;
     if (!rowCount || !colCount || model.overlap) {
       return { rows: 0, cols: 0, headerCols: 0, roles: cellRoles(model, 0, 0) };
     }
-    let leading = 0;
-    for (let r = 0; r < rowCount; r += 1) {
-      const anchors = cells.filter((cell) => cell.row === r);
-      if (!anchors.length || !anchors.every((cell) => cell.header)) break;
-      leading += 1;
-    }
-    const headCount = model.groups.filter((group) => group.kind === "thead").reduce((sum, group) => sum + group.rowCount, 0);
-    let rows = Math.max(1, leading, headCount);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const cell of cells) {
-        if (cell.row < rows && cell.row + cell.rowspan > rows) {
-          rows = cell.row + cell.rowspan;
-          changed = true;
+    let rows = selectedRows;
+    if (rows === null) {
+      let leading = 0;
+      for (let r = 0; r < rowCount; r += 1) {
+        const anchors = cells.filter((cell) => cell.row === r);
+        if (!anchors.length || !anchors.every((cell) => cell.header)) break;
+        leading += 1;
+      }
+      const headCount = model.groups.filter((group) => group.kind === "thead").reduce((sum, group) => sum + group.rowCount, 0);
+      rows = Math.max(1, leading, headCount);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const cell of cells) {
+          if (cell.row < rows && cell.row + cell.rowspan > rows) {
+            rows = cell.row + cell.rowspan;
+            changed = true;
+          }
         }
       }
+      if (rows >= rowCount) rows = 0;
     }
-    if (rows >= rowCount) rows = 0;
     let headerCols = colCount - 1;
     let bodyRows = 0;
     for (let r = rows; r < rowCount; r += 1) {
@@ -99,7 +102,7 @@
     }
     if (!bodyRows) headerCols = 0;
     let cols = Math.max(1, headerCols);
-    changed = true;
+    let changed = true;
     while (changed) {
       changed = false;
       for (const cell of cells) {
@@ -559,7 +562,7 @@
     const rows = record.layout ? record.layout.rows : 0;
     const cols = record.layout ? record.layout.cols : 0;
     const manual = record.override.rows !== null || record.override.cols !== null;
-    if (record.skipped || (!rows && !cols && !manual)) {
+    if (record.skipped || (!record.region.rows && !record.region.cols)) {
       removeBar(record);
       return;
     }
@@ -623,9 +626,8 @@
       return;
     }
     if (record.override.rows !== null) record.override.rows = lowerBoundary(usableRowBoundaries(parts.model), record.override.rows);
-    if (record.override.cols !== null) record.override.cols = lowerBoundary(usableColBoundaries(parts.model, 0), record.override.cols);
     let rows = record.override.rows === null ? record.region.rows : record.override.rows;
-    let cols = record.override.cols === null ? record.region.cols : record.override.cols;
+    let cols = record.override.cols === null ? frozenRegion(parts.model, rows).cols : record.override.cols;
     const manual = record.override.rows !== null || record.override.cols !== null;
     if (!rows && !cols) {
       for (const [cell] of record.inners) unwrapInner(record, cell);
@@ -718,7 +720,9 @@
       parts.elements.forEach((cell, index) => restoreStyle(cell, saved[index]));
     }
     if (record.override.rows === null && rows && rowOffsets[rows] > scroll.clientHeight / 2) rows = 0;
-    if (record.override.cols !== null) {
+    if (record.override.cols === null) {
+      cols = frozenRegion(parts.model, rows).cols;
+    } else {
       cols = lowerBoundary(usableColBoundaries(parts.model, rows), record.override.cols);
       record.override.cols = cols;
     }
@@ -870,8 +874,9 @@
   state.observer = new MutationObserver(scheduleScan);
   if (typeof ResizeObserver !== "undefined") {
     state.resize = new ResizeObserver((entries) => {
+      const targets = new Set(entries.map((entry) => entry.target));
       for (const record of state.records.values()) {
-        if (entries.some((entry) => entry.target === record.table || entry.target === record.scroll)) requestRefresh(record);
+        if (targets.has(record.table) || targets.has(record.scroll)) requestRefresh(record);
       }
     });
   }
