@@ -238,6 +238,25 @@ async function createPage(directory, version, mimicTables = true) {
     noFreezeSection.append(noFreezeTable);
     document.body.append(noFreezeSection);
     window.__noFreezeTable = noFreezeTable;
+    // 先頭の空の tr は、測る基準のセルが無いので対象から外す。
+    const emptyFirstRowSection = document.createElement("div");
+    emptyFirstRowSection.className = "md";
+    emptyFirstRowSection.id = "empty-first-row-case";
+    const emptyFirstRowTable = document.createElement("table");
+    const emptyFirstRowBody = emptyFirstRowTable.createTBody();
+    emptyFirstRowBody.insertRow();
+    const emptyFirstRowHeader = emptyFirstRowBody.insertRow();
+    for (const text of ["見出し", "値"]) {
+      const cell = document.createElement("th");
+      cell.textContent = text;
+      emptyFirstRowHeader.append(cell);
+    }
+    const emptyFirstRowData = emptyFirstRowBody.insertRow();
+    emptyFirstRowData.insertCell().textContent = "空の先頭行の後の内容";
+    emptyFirstRowData.insertCell().textContent = "測る基準の無い表";
+    emptyFirstRowSection.append(emptyFirstRowTable);
+    document.body.append(emptyFirstRowSection);
+    window.__emptyFirstRowTable = emptyFirstRowTable;
     window.__beforeHtml = Array.from(document.querySelectorAll(".md"), md => md.innerHTML);
     window.__nestedBefore = window.__fixtureTables.G.querySelector("table").outerHTML;
     window.__smallBefore = { text: window.__fixtureTables.F.textContent, rows: window.__fixtureTables.F.rows.length, width: window.__fixtureTables.F.getBoundingClientRect().width };
@@ -979,6 +998,9 @@ async function exerciseDisplayControls() {
   await frame();
   check(inputsOf(a).every(input => input.checked) && aElements.every(element => getComputedStyle(element).whiteSpace !== 'nowrap'), 'すべて折り返すで列と結合セルを折り返す');
   if (!originalWrap) inputsOf(a)[col].click();
+  const emptyFirstRow = state.records.get(window.__emptyFirstRowTable);
+  check(emptyFirstRow?.skipped === true && emptyFirstRow.model.overlap === false && emptyFirstRow.model.grid[0][0] === undefined, 'セルが重ならなくても先頭行が空の表は対象から外す');
+  check(!emptyFirstRow?.bar && !emptyFirstRow?.columns && !document.querySelector('#empty-first-row-case [data-md-table-sticky-bar], #empty-first-row-case [data-md-table-sticky-columns]'), '先頭行が空の表には帯も列のチェックボックスも出さない');
   const noFreeze = state.records.get(window.__noFreezeTable);
   check(noFreeze.region.rows === 0 && noFreeze.region.cols === 0 && !!noFreeze.bar && inputsOf(noFreeze).length === 1, '固定しない表にも帯と列のチェックボックスを置く');
   check(['rows-minus', 'rows-plus', 'cols-minus', 'cols-plus', 'auto'].every(name => action(noFreeze, name).getClientRects().length === 0), '固定しない表は固定の操作だけを隠す');
@@ -1025,6 +1047,9 @@ async function exerciseDisplayControls() {
     const widths = Array.from(j.table.tBodies[0].rows[0].cells, cell => cell.getBoundingClientRect().width);
     check(widths.every((width, index) => width >= Math.min(maxWidths[index], cap) - 1), '横スクロールありでは折り返す各列を最大の内容の幅と 12em の小さい方より狭くしない');
     check(j.scroll.scrollWidth > j.scroll.clientWidth + 1, '横スクロールありでは狭い枠を超えた表 J を横にスクロールできる');
+    const reference = j.table.tBodies[0].rows[0].cells[4];
+    check(getComputedStyle(reference).overflowWrap === 'anywhere', '横スクロールありでも表 J の長い参照 URL を途中で折り返す');
+    check(widths[4] <= cap + 1, '枠を超えた横スクロールありの表 J でも参照列の幅を 12em + 1px 以下にする');
     j.scroll.scrollLeft = 200;
     await frame();
     check(j.scroll.scrollLeft > 0, '横スクロールありの表 J が実際に横へ動く');

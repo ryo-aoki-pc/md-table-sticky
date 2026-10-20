@@ -782,7 +782,9 @@
     });
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
-    panel.append(record.bar.element, record.columns.element, anchor);
+    panel.appendChild(record.bar.element);
+    if (record.columns) panel.appendChild(record.columns.element);
+    panel.appendChild(anchor);
     const keydown = (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -806,7 +808,9 @@
     window.removeEventListener("keydown", keydown, true);
     if (restore && placeholder.isConnected) {
       const anchor = barAnchor(record);
-      placeholder.before(record.bar.element, record.columns.element, anchor);
+      placeholder.before(record.bar.element);
+      if (record.columns) placeholder.before(record.columns.element);
+      placeholder.before(anchor);
     }
     placeholder.remove();
     overlay.remove();
@@ -822,7 +826,7 @@
       // 固定を外した同じ配置から、行・列とチェックボックスの位置を測る。
       for (const cell of parts.elements) cell.style.setProperty("position", "static", "important");
       const rects = parts.elements.map((cell) => cell.getBoundingClientRect());
-      const origin = rects[parts.model.grid[0][0] ?? 0];
+      const origin = rects[parts.model.grid[0][0]];
       const rowOffsets = parts.rows.map((row) => row.getBoundingClientRect().top - origin.top);
       const colOffsets = Array(parts.model.colCount).fill(null);
       parts.model.cells.forEach((cell, index) => {
@@ -882,7 +886,7 @@
     const parts = tableParts(record.table);
     record.model = parts.model;
     record.region = frozenRegion(parts.model);
-    record.skipped = parts.model.overlap;
+    record.skipped = parts.model.overlap || (parts.model.cells.length > 0 && parts.model.grid[0][0] === undefined);
     const currentCells = new Set(parts.elements);
     for (const [cell, inner] of record.inners) {
       if (!currentCells.has(cell) || inner.parentNode !== cell || cell.childNodes.length !== 1 || cell.firstChild !== inner) unwrapInner(record, cell);
@@ -928,7 +932,7 @@
     }
     desired.set(record.table, { ...tableStyles, "border-collapse": "separate", "border-spacing": "0" });
     const modes = cellWrapModes(parts.model, record.wrap);
-    const wrapStyles = modes.map((mode) => ({ "white-space": mode === "nowrap" ? "nowrap" : "normal", "overflow-wrap": record.scrollX ? "break-word" : "anywhere" }));
+    const wrapStyles = modes.map((mode) => mode === "nowrap" ? { "white-space": "nowrap" } : { "white-space": "normal", "overflow-wrap": "anywhere" });
     parts.elements.forEach((element, index) => desired.set(element, { ...record.borderCache.styles[index], ...wrapStyles[index] }));
     apply(record, desired);
     if (record.scrollX) {
@@ -1114,7 +1118,7 @@
 
   function printMode(printing) {
     write(() => {
-      if (printing && state.floating) closeFloating();
+      if (printing && state.floating) closeFloating(true, false);
       for (const record of state.records.values()) {
         record.printing = printing;
         refresh(record);
@@ -1160,7 +1164,7 @@
       state.notification.element.remove();
     }
     write(() => {
-      if (state.floating) closeFloating();
+      if (state.floating) closeFloating(true, false);
       for (const record of state.records.values()) cleanup(record);
     });
     state.records.clear();
