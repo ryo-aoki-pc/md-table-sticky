@@ -114,37 +114,50 @@
     return { rows, cols, headerCols, roles: cellRoles(model, rows, cols) };
   }
 
-  // 共有する辺は太い線を選ぶ。同じ太さなら上・左のセルを優先する。
+  // hidden は共有する線を消し、それ以外は太い線を選ぶ。同じ太さなら上・左を優先する。
   function rebuildBorders(model, borders) {
     const empty = () => ({ width: 0, style: "none", color: "transparent" });
     function line(edge) {
-      if (!edge || edge.style === "none" || edge.style === "hidden" || !(Number(edge.width) > 0)) return empty();
+      if (edge && edge.style === "hidden") return { width: 0, style: "hidden", color: "transparent" };
+      if (!edge || edge.style === "none" || !(Number(edge.width) > 0)) return empty();
       return { width: Number(edge.width), style: edge.style, color: edge.color };
     }
     function wider(first, second) {
+      if (first.style === "hidden") return first;
+      if (second.style === "hidden") return second;
       return second.width > first.width ? second : first;
+    }
+    function visible(edge) {
+      return edge.style === "hidden" ? empty() : { ...edge };
+    }
+    function missing(row, col) {
+      return !model.grid[row] || model.grid[row][col] === undefined;
     }
     return model.cells.map((cell, index) => {
       const own = borders[index] || {};
       const right = cell.col + cell.colspan;
       const bottom = cell.row + cell.rowspan;
+      let topExposed = false;
+      let leftExposed = false;
       let rightLine = empty();
       let bottomLine = empty();
       for (let r = cell.row; r < bottom; r += 1) {
+        if (missing(r, cell.col - 1)) leftExposed = true;
         const neighbor = model.grid[r] && model.grid[r][right];
         const adjacent = neighbor === undefined ? null : borders[neighbor];
         rightLine = wider(rightLine, wider(line(own.right), line(adjacent && adjacent.left)));
       }
       for (let c = cell.col; c < right; c += 1) {
+        if (missing(cell.row - 1, c)) topExposed = true;
         const neighbor = model.grid[bottom] && model.grid[bottom][c];
         const adjacent = neighbor === undefined ? null : borders[neighbor];
         bottomLine = wider(bottomLine, wider(line(own.bottom), line(adjacent && adjacent.top)));
       }
       return {
-        top: cell.row === 0 ? line(own.top) : empty(),
-        right: { ...rightLine },
-        bottom: { ...bottomLine },
-        left: cell.col === 0 ? line(own.left) : empty(),
+        top: topExposed ? visible(line(own.top)) : empty(),
+        right: visible(rightLine),
+        bottom: visible(bottomLine),
+        left: leftExposed ? visible(line(own.left)) : empty(),
       };
     });
   }
@@ -323,6 +336,13 @@
     return record.wrapper;
   }
 
+  function structureOf(parts) {
+    return {
+      rows: parts.rows.slice(), rowCells: parts.rows.map((row) => Array.from(row.cells)),
+      elements: parts.elements.slice(), cells: parts.model.cells,
+    };
+  }
+
   function sameStructure(cache, parts) {
     if (!cache || cache.rows.length !== parts.rows.length || cache.elements.length !== parts.elements.length) return false;
     for (let r = 0; r < parts.rows.length; r += 1) {
@@ -382,10 +402,7 @@
       }
       return result;
     });
-    record.borderCache = {
-      rows: parts.rows.slice(), rowCells: parts.rows.map((row) => Array.from(row.cells)),
-      elements: parts.elements.slice(), cells: parts.model.cells, values, styles,
-    };
+    record.borderCache = { ...structureOf(parts), values, styles };
     return true;
   }
 
@@ -419,16 +436,55 @@
     for (const [element, styles] of desired) applyOne(record, element, styles);
   }
 
+  function nativeOverride(record, cell, element, rows) {
+    const base = record.base.get(element);
+    if (base && base.nativeTop && (rows || cell.row !== 0)) return { position: "static" };
+    return null;
+  }
+
   function refresh(record) {
     if (!state.active || !record.table.isConnected) return;
     const parts = tableParts(record.table);
     record.model = parts.model;
     record.region = frozenRegion(parts.model);
     record.skipped = parts.model.overlap;
-    if (record.skipped || !parts.model.cells.length || (!record.region.rows && !record.region.cols) || parts.model.grid[0][0] === undefined) {
+    const currentCells = new Set(parts.elements);
+    for (const [cell, inner] of record.inners) {
+      if (!currentCells.has(cell) || inner.parentNode !== cell || cell.childNodes.length !== 1 || cell.firstChild !== inner) {
+        unwrapInner(record, cell);
+      }
+    }
+    const currentInners = new Set(record.inners.values());
+    for (const element of record.originals.keys()) {
+      if (element === record.table || element === record.wrapper || currentCells.has(element) || currentInners.has(element)) continue;
+      restoreStyle(element, record.originals.get(element));
+      record.applied.delete(element);
+      record.originals.delete(element);
+      record.base.delete(element);
+    }
+    if (record.skipped || !parts.model.cells.length || parts.model.grid[0][0] === undefined) {
       for (const [cell] of record.inners) unwrapInner(record, cell);
       apply(record, new Map());
       unwrapContainer(record);
+      record.layout = null;
+      return;
+    }
+    if (!record.region.rows && !record.region.cols) {
+      for (const [cell] of record.inners) unwrapInner(record, cell);
+      unwrapContainer(record);
+      for (const cell of parts.elements) remember(record, cell);
+      const parent = record.table.parentElement;
+      if (!sameStructure(record.nativeCache, parts) || record.nativeCache.parent !== parent) {
+        updateBase(record, parts.elements);
+        record.nativeCache = { ...structureOf(parts), parent };
+      }
+      const desired = new Map();
+      parts.model.cells.forEach((cell, index) => {
+        const element = parts.elements[index];
+        const styles = nativeOverride(record, cell, element, 0);
+        if (styles) desired.set(element, styles);
+      });
+      apply(record, desired);
       record.layout = null;
       return;
     }
@@ -451,20 +507,6 @@
     }
     const visible = record.table.getBoundingClientRect();
     if (!visible.width || !visible.height) return;
-    const currentCells = new Set(parts.elements);
-    for (const [cell, inner] of record.inners) {
-      if (!currentCells.has(cell) || inner.parentNode !== cell || cell.childNodes.length !== 1 || cell.firstChild !== inner) {
-        unwrapInner(record, cell);
-      }
-    }
-    const currentInners = new Set(record.inners.values());
-    for (const element of record.originals.keys()) {
-      if (element === record.table || element === record.wrapper || currentCells.has(element) || currentInners.has(element)) continue;
-      restoreStyle(element, record.originals.get(element));
-      record.applied.delete(element);
-      record.originals.delete(element);
-      record.base.delete(element);
-    }
     const rebuilt = ensureBorders(record, parts);
     if (scrollChanged && !rebuilt) updateBase(record, parts.elements);
     desired.set(record.table, { ...tableStyles, "border-collapse": "separate", "border-spacing": "0" });
@@ -510,7 +552,12 @@
     record.layout = { rows, cols, rowOffsets, colOffsets, roles, fixedHeight, fixedWidth };
     if (!rows && !cols) {
       for (const [cell] of record.inners) unwrapInner(record, cell);
-      for (const element of parts.elements) desired.delete(element);
+      parts.model.cells.forEach((cell, index) => {
+        const element = parts.elements[index];
+        const styles = nativeOverride(record, cell, element, 0);
+        if (styles) desired.set(element, styles);
+        else desired.delete(element);
+      });
       if (record.wrapper) desired.set(record.table, tableStyles);
       else desired.delete(record.table);
       apply(record, desired);
@@ -538,6 +585,9 @@
         if (base.transparent) styles["background-color"] = background;
         // GitLab は、上下の罫線が 0 になる境目の線を box-shadow で描く。付け直した下の罫線があるときだけ消す。
         if (record.borderCache.values[index].bottom.width > 0) styles["box-shadow"] = "none";
+      } else {
+        // 本文の th に GitLab が付けた固定を外す。行 0 を残す扱いは変えない。
+        Object.assign(styles, nativeOverride(record, cell, element, rows));
       }
       const vertical = !role.top && (role.left || role.cross) && cell.rowspan > 1;
       const horizontal = role.top && !role.left && cell.colspan > 1;
@@ -596,7 +646,7 @@
         if (!state.processed.has(table)) {
           const record = {
             table, wrapper: null, scroll: null, originals: new Map(), applied: new Map(),
-            inners: new Map(), base: new Map(), borderCache: null, printing: false, skipped: false,
+            inners: new Map(), base: new Map(), borderCache: null, nativeCache: null, printing: false, skipped: false,
           };
           state.records.set(table, record);
           state.processed.add(table);

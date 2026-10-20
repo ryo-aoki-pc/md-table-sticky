@@ -50,6 +50,6 @@ test("生成した URL の中身に構文の誤りが無い", () => {
   assert.equal(new Function(code)(), undefined);
   assert.ok(code.endsWith("void 0;"));
   const generated = generateArtifacts(source);
-  assert.ok(generated["bookmarks.html"].startsWith("<!DOCTYPE NETSCAPE-Bookmark-file-1>"));
+  assert.deepEqual(Object.keys(generated), ["bookmarklet.txt", "bookmarklet.html"]);
   assert.ok(generated["bookmarklet.html"].includes("navigator.clipboard.writeText"));
 });

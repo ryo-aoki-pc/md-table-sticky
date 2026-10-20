@@ -407,6 +407,83 @@ async function checkMutationScope(cdp) {
   assert.equal(result.sameCache, true, "セルの並びが変わらなければ罫線を読み直さない");
 }
 
+async function checkNativeBodyHeader(cdp) {
+  const result = await cdp.evaluate(`(async () => {
+    const table = window.__fixtureTables.I;
+    const scroll = table.parentElement;
+    const row = table.tBodies[0].rows[0];
+    const header = row.cells[1];
+    const ordinary = row.cells[2];
+    scroll.scrollTop = 0;
+    const before = { header: header.getBoundingClientRect().top, ordinary: ordinary.getBoundingClientRect().top };
+    scroll.scrollTop = 200;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return {
+      headerTag: header.tagName, ordinaryTag: ordinary.tagName, position: getComputedStyle(header).position,
+      priority: header.style.getPropertyPriority("position"), scrollTop: scroll.scrollTop,
+      headerDelta: header.getBoundingClientRect().top - before.header, ordinaryDelta: ordinary.getBoundingClientRect().top - before.ordinary,
+    };
+  })()`);
+  assert.equal(result.headerTag, "TH", "本文の先頭行の 2 列目は th にする");
+  assert.equal(result.ordinaryTag, "TD", "動きを比べる本文のセルは td にする");
+  assert.equal(result.position, "static", "固定する範囲の外の th は GitLab 自身の固定を外す");
+  assert.equal(result.priority, "important", "GitLab の CSS より強く static を入れる");
+  assert.equal(result.scrollTop, 200, "本文の th を縦へスクロールする");
+  near(result.headerDelta, -200, "固定しない本文の th は縦へ動く");
+  near(result.ordinaryDelta, -200, "比べる本文の td は縦へ動く");
+  near(result.headerDelta, result.ordinaryDelta, "本文の th はほかの本文のセルと一緒に動く");
+  await checkNativeFallbacks(cdp);
+}
+
+async function checkNativeFallbacks(cdp) {
+  await cdp.evaluate(`(() => {
+    const table = window.__fixtureTables.I;
+    const scroll = table.parentElement;
+    window.__nativeWrapperStyle = scroll.getAttribute("style");
+    scroll.style.setProperty("width", "80px", "important");
+    scroll.style.setProperty("max-height", "60px", "important");
+  })()`);
+  try {
+    await waitFor(cdp, "(() => { const layout = window.__mdTableSticky.records.get(window.__fixtureTables.I).layout; return layout && layout.rows === 0 && layout.cols === 0; })()", "狭い範囲では行と列の固定を外す");
+    const narrow = await cdp.evaluate(`(() => {
+      const table = window.__fixtureTables.I;
+      return { header: getComputedStyle(table.tHead.rows[0].cells[1]).position, body: getComputedStyle(table.tBodies[0].rows[0].cells[1]).position, collapse: getComputedStyle(table).borderCollapse };
+    })()`);
+    assert.deepEqual(narrow, { header: "sticky", body: "static", collapse: "collapse" }, "両方向を外しても行 0 の固定は残し、本文の固定だけを外す");
+  } finally {
+    await cdp.evaluate(`(() => {
+      const scroll = window.__fixtureTables.I.parentElement;
+      if (window.__nativeWrapperStyle === null) { scroll.getAttribute("style"); scroll.removeAttribute("style"); }
+      else scroll.setAttribute("style", window.__nativeWrapperStyle);
+    })()`);
+  }
+  await waitFor(cdp, "(() => { const layout = window.__mdTableSticky.records.get(window.__fixtureTables.I).layout; return layout && layout.rows === 1 && layout.cols === 1; })()", "範囲を戻した後に固定も戻す");
+  await cdp.evaluate(`(() => {
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("data-sticky-header", "");
+    const table = document.createElement("table");
+    const addHeader = section => { const cell = document.createElement("th"); cell.textContent = "小さい見出し"; section.insertRow().append(cell); };
+    addHeader(table.createTHead());
+    addHeader(table.createTBody());
+    addHeader(table.createTBody());
+    wrapper.append(table);
+    document.querySelector(".file-content").append(wrapper);
+    window.__unfrozenNativeTable = table;
+    window.__unfrozenNativeWrapper = wrapper;
+  })()`);
+  try {
+    await waitFor(cdp, "window.__mdTableSticky.records.has(window.__unfrozenNativeTable)", "全行・全列になる表も記録する");
+    const unfrozen = await cdp.evaluate(`(() => {
+      const table = window.__unfrozenNativeTable;
+      const record = window.__mdTableSticky.records.get(table);
+      return { rows: record.region.rows, cols: record.region.cols, borders: record.borderCache, header: getComputedStyle(table.tHead.rows[0].cells[0]).position, bodies: Array.from(table.tBodies, body => getComputedStyle(body.rows[0].cells[0]).position), collapse: getComputedStyle(table).borderCollapse };
+    })()`);
+    assert.deepEqual(unfrozen, { rows: 0, cols: 0, borders: null, header: "sticky", bodies: ["static", "static"], collapse: "collapse" }, "全行・全列になる表は罫線を付け直さず、行 0 以外の固定を外す");
+  } finally {
+    await cdp.evaluate("window.__unfrozenNativeWrapper.remove()");
+  }
+}
+
 async function waitFor(cdp, expression, message) {
   for (let attempt = 0; attempt < 40; attempt++) {
     if (await cdp.evaluate(expression)) return;
@@ -571,9 +648,18 @@ test("生成したブックマークレットを GitLab の DOM で確かめる"
         assert.equal(shapes.a, version === "master" ? 2 : 1, "版ごとの thead の行数");
         assert.equal(shapes.span, version === "master" ? 2 : 1, "19.5.0 の見出しの結合の欠落も再現する");
         assert.equal(shapes.bWrapped, version === "master", "thead の無い表を包む版の違い");
+        if (version === "master") {
+          const nativeBodyHeader = await cdp.evaluate(`(() => {
+            const header = window.__fixtureTables.I.tBodies[0].rows[0].cells[1];
+            const style = getComputedStyle(header);
+            return { position: style.position, top: style.top };
+          })()`);
+          assert.deepEqual(nativeBodyHeader, { position: "sticky", top: "0px" }, "本文の先頭行の th に GitLab 自身の固定がある形を再現する");
+        }
         await cdp.evaluate(bookmarklet);
         await cdp.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
         assert.equal(await cdp.evaluate("!!window.__mdTableSticky"), true, "固定が始まる");
+        if (version === "master") await checkNativeBodyHeader(cdp);
         const regions = { A: [version === "master" ? 2 : 1, 1], B: [2, 2], C: [version === "master" ? 2 : 1, 2], D: [1, 1], E: [1, 1] };
         if (version === "19.5") regions["回避形"] = [2, 1];
         const dimensions = await cdp.evaluate("(" + prepareMeasurements.toString() + ")(" + JSON.stringify(regions) + ")");

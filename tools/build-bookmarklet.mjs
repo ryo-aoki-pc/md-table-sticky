@@ -67,20 +67,9 @@ export function generateArtifacts(source) {
     "</html>",
     "",
   ].join("\n");
-  const bookmarks = [
-    "<!DOCTYPE NETSCAPE-Bookmark-file-1>",
-    '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
-    "<TITLE>Bookmarks</TITLE>",
-    "<H1>Bookmarks</H1>",
-    "<DL><p>",
-    '    <DT><A HREF="' + escaped + '">' + name + "</A>",
-    "</DL><p>",
-    "",
-  ].join("\n");
   return {
     "bookmarklet.txt": url + "\n",
     "bookmarklet.html": page,
-    "bookmarks.html": bookmarks,
   };
 }
 

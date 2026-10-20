@@ -143,4 +143,20 @@ p("");
 p("</details>");
 p("");
 
+// I: 本文の先頭行の一部の th は、GitLab 自身の上の固定だけを外す。
+p("## I: 本文の先頭行の一部だけが th");
+p("");
+p("<table>");
+p("<thead>");
+p("<tr><th>行の見出し</th>" + Array.from({ length: 10 }, (_, c) => `<th>列 ${c + 1}</th>`).join("") + "</tr>");
+p("</thead>");
+p("<tbody>");
+for (let i = 1; i <= 30; i++) {
+  const second = i === 1 ? "<th>本文の th</th>" : `<td>本文の値 ${num(i, 0)}</td>`;
+  p(`<tr><th>行 ${i}</th>${second}` + Array.from({ length: 9 }, (_, c) => `<td>値 ${num(i, c + 1)} の説明の文</td>`).join("") + "</tr>");
+}
+p("</tbody>");
+p("</table>");
+p("");
+
 writeFileSync(process.argv[2], out.join("\n"), "utf8");

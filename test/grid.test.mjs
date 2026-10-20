@@ -346,23 +346,111 @@ test("結合セルに接する複数の罫線では、縦横とも最も太い�
   assert.deepEqual(plain(rebuildBorders(horizontal, horizontalBorders)[0].bottom), horizontalBorders[1].top);
 });
 
-test("none と hidden と幅 0 は線として数えない", () => {
+test("none と幅 0 は線として数えず、隣の線を残す", () => {
   const grid = buildGrid(body([[td(), td()]]));
   const borders = [cellBorders(), cellBorders()];
   borders[0].top = border(8, "none");
-  borders[0].left = border(8, "hidden");
-  borders[0].right = border(8, "hidden");
+  borders[0].left = border(0, "solid");
+  borders[0].right = border(8, "none");
   borders[1].left = border(2, "solid", "rgb(1, 2, 3)");
-  borders[1].top = border(8, "hidden");
   borders[1].bottom = border(0, "solid");
   const rebuilt = rebuildBorders(grid, borders);
   assert.deepEqual(plain(rebuilt[0].right), borders[1].left);
-  for (const [index, side] of [[0, "top"], [0, "left"], [1, "top"], [1, "bottom"]]) {
+  for (const [index, side] of [[0, "top"], [0, "left"], [1, "bottom"]]) {
     assert.equal(rebuilt[index][side].width, 0);
     assert.equal(rebuilt[index][side].style, "none");
   }
+  borders[0].right = border(2, "solid", "rgb(4, 5, 6)");
   borders[1].left = border(6, "none");
+  assert.deepEqual(plain(rebuildBorders(grid, borders)[0].right), borders[0].right);
+  borders[0].right = border(0, "solid");
   assert.equal(rebuildBorders(grid, borders)[0].right.width, 0);
+});
+
+test("共有する縦の辺では、どちら側の hidden も隣の線を消す", () => {
+  const grid = buildGrid(body([[td(), td()]]));
+  for (const width of [0, 8]) {
+    for (const [index, side] of [[0, "right"], [1, "left"]]) {
+      const borders = [cellBorders(border(2)), cellBorders(border(3))];
+      borders[index][side] = border(width, "hidden");
+      const rebuilt = rebuildBorders(grid, borders);
+      assert.equal(rebuilt[0].right.width, 0, index + " の " + side + "、幅 " + width);
+      assert.equal(rebuilt[0].right.style, "none");
+      assert.equal(rebuilt[1].left.width, 0);
+    }
+  }
+});
+
+test("共有する横の辺では、どちら側の hidden も隣の線を消す", () => {
+  const grid = buildGrid(body([[td()], [td()]]));
+  for (const width of [0, 8]) {
+    for (const [index, side] of [[0, "bottom"], [1, "top"]]) {
+      const borders = [cellBorders(border(2)), cellBorders(border(3))];
+      borders[index][side] = border(width, "hidden");
+      const rebuilt = rebuildBorders(grid, borders);
+      assert.equal(rebuilt[0].bottom.width, 0, index + " の " + side + "、幅 " + width);
+      assert.equal(rebuilt[0].bottom.style, "none");
+      assert.equal(rebuilt[1].top.width, 0);
+    }
+  }
+});
+
+test("結合した辺の一部に hidden があれば、その辺全体の線を消す", () => {
+  const vertical = buildGrid(body([[td(2), td()], [td()]]));
+  const verticalBorders = Array.from({ length: 3 }, () => cellBorders());
+  verticalBorders[1].left = border(5, "double");
+  verticalBorders[2].left = border(0, "hidden");
+  const right = rebuildBorders(vertical, verticalBorders)[0].right;
+  assert.equal(right.width, 0);
+  assert.equal(right.style, "none");
+  const horizontal = buildGrid(body([[td(1, 2)], [td(), td()]]));
+  const horizontalBorders = Array.from({ length: 3 }, () => cellBorders());
+  horizontalBorders[1].top = border(4, "double");
+  horizontalBorders[2].top = border(0, "hidden");
+  const bottom = rebuildBorders(horizontal, horizontalBorders)[0].bottom;
+  assert.equal(bottom.width, 0);
+  assert.equal(bottom.style, "none");
+});
+
+test("外周の hidden は線を描かない", () => {
+  const grid = buildGrid(body([[td()]]));
+  const rebuilt = rebuildBorders(grid, [cellBorders(border(8, "hidden"))]);
+  for (const side of ["top", "right", "bottom", "left"]) {
+    assert.equal(rebuilt[0][side].width, 0);
+    assert.equal(rebuilt[0][side].style, "none");
+  }
+});
+
+test("1 行目が短くても、その外に始まるセルの上の罫線を残す", () => {
+  const grid = buildGrid(body([many(2), many(3)]));
+  const borders = Array.from({ length: 5 }, () => cellBorders());
+  borders[4].top = border(3, "dashed", "rgb(10, 20, 30)");
+  const rebuilt = rebuildBorders(grid, borders);
+  assert.equal(grid.cells[4].row, 1);
+  assert.equal(grid.cells[4].col, 2);
+  assert.deepEqual(plain(rebuilt[4].top), borders[4].top);
+  assert.equal(rebuilt[2].top.width, 0);
+  assert.equal(rebuilt[3].top.width, 0);
+});
+
+test("結合セルの上に 1 マスでも空きがあれば、その上の罫線を残す", () => {
+  const grid = buildGrid(body([[td()], [td(1, 2)]]));
+  const borders = [cellBorders(), cellBorders()];
+  borders[1].top = border(2, "double", "rgb(40, 50, 60)");
+  const rebuilt = rebuildBorders(grid, borders);
+  assert.deepEqual(plain(grid.grid), [[0], [1, 1]]);
+  assert.deepEqual(plain(rebuilt[1].top), borders[1].top);
+});
+
+test("結合セルの左に 1 マスでも空きがあれば、その左の罫線を残す", () => {
+  const grid = buildGrid(body([[td(), td(2)], []]));
+  const borders = [cellBorders(), cellBorders()];
+  borders[1].left = border(4, "dashed", "rgb(70, 80, 90)");
+  const rebuilt = rebuildBorders(grid, borders);
+  assert.equal(grid.cells[1].col, 1);
+  assert.equal(grid.grid[0][0], 0);
+  assert.equal(grid.grid[1][0], undefined);
+  assert.deepEqual(plain(rebuilt[1].left), borders[1].left);
 });
 
 test("同じ太さの共有罫線は上か左のセルの色と線種を使う", () => {

@@ -10,7 +10,6 @@ GitLab の Markdown の表で、先頭行・先頭列を固定してスクロー
 
 1. [dist/bookmarklet.txt](dist/bookmarklet.txt) を GitHub の **Raw** で開き、全部を写す。ブラウザーのブックマークの管理（Edge は「お気に入り」）で新しいブックマークを作り、URL の欄に貼る。アドレスバーには貼らない。`javascript:` が消されるため。
 2. [dist/bookmarklet.html](dist/bookmarklet.html) を手元に落として開く。「GitLab の表を固定」のリンクをブックマークバーへドラッグする。ページの「URL を写す」ボタンも使える。
-3. [dist/bookmarks.html](dist/bookmarks.html) を手元に落とし、ブラウザーの「ブックマークのインポート」で読み込む。
 
 ## 使い方
 

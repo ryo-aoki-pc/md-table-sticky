@@ -14,7 +14,7 @@ GitLab の Markdown の表で、先頭行・先頭列を固定してスクロー
 
 - `src/sticky-table.js` — 中核の IIFE。格子と固定する範囲の純粋な関数、DOM への当て方、見張り、元へ戻す処理
 - `tools/build-bookmarklet.mjs` — ブックマークレットの組み立てと `--check`
-- `dist/bookmarklet.txt`・`dist/bookmarklet.html`・`dist/bookmarks.html` — URL、登録用のページ、Netscape 形式のインポート用の生成物
+- `dist/bookmarklet.txt`・`dist/bookmarklet.html` — URL と登録用のページの生成物
 - `test/grid.test.mjs` — 格子と固定する範囲の試験
 - `test/build.test.mjs` — 組み立ての制約、生成物の一致、構文の試験
 - `test/browser.test.mjs` — Edge・Chromium を CDP で動かし、生成物でスクロールと元への戻しを確かめる試験
