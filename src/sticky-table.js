@@ -137,18 +137,18 @@
       const own = borders[index] || {};
       const right = cell.col + cell.colspan;
       const bottom = cell.row + cell.rowspan;
-      let topExposed = false;
-      let leftExposed = false;
+      let topExposed = true;
+      let leftExposed = true;
       let rightLine = empty();
       let bottomLine = empty();
       for (let r = cell.row; r < bottom; r += 1) {
-        if (missing(r, cell.col - 1)) leftExposed = true;
+        if (!missing(r, cell.col - 1)) leftExposed = false;
         const neighbor = model.grid[r] && model.grid[r][right];
         const adjacent = neighbor === undefined ? null : borders[neighbor];
         rightLine = wider(rightLine, wider(line(own.right), line(adjacent && adjacent.left)));
       }
       for (let c = cell.col; c < right; c += 1) {
-        if (missing(cell.row - 1, c)) topExposed = true;
+        if (!missing(cell.row - 1, c)) topExposed = false;
         const neighbor = model.grid[bottom] && model.grid[bottom][c];
         const adjacent = neighbor === undefined ? null : borders[neighbor];
         bottomLine = wider(bottomLine, wider(line(own.bottom), line(adjacent && adjacent.top)));
@@ -212,7 +212,7 @@
 
   const state = {
     records: new Map(), processed: new WeakSet(), pending: new Set(), dirty: new Set(), active: true,
-    frame: 0, timer: 0, observer: null, resize: null, notification: null,
+    frame: 0, timer: 0, firstMutationAt: null, observer: null, resize: null, notification: null,
   };
   window.__mdTableSticky = state;
 
@@ -238,8 +238,11 @@
       for (const node of mutation.addedNodes) markChanged(node, true);
       for (const node of mutation.removedNodes) markChanged(node, true);
     }
+    const now = window.performance.now();
+    if (state.firstMutationAt === null) state.firstMutationAt = now;
+    const remaining = Math.max(0, 1000 - (now - state.firstMutationAt));
     window.clearTimeout(state.timer);
-    state.timer = window.setTimeout(scan, 300);
+    state.timer = window.setTimeout(scan, Math.min(300, remaining));
   }
 
   // 子の移動を自分の変更として扱い、次の見張りを呼び続けない。
@@ -632,6 +635,9 @@
   function scan() {
     if (!state.active) return;
     write(() => {
+      window.clearTimeout(state.timer);
+      state.timer = 0;
+      state.firstMutationAt = null;
       const dirty = new Set(state.dirty);
       state.dirty.clear();
       for (const [table, record] of state.records) {
@@ -696,6 +702,8 @@
     state.observer.disconnect();
     if (state.resize) state.resize.disconnect();
     window.clearTimeout(state.timer);
+    state.timer = 0;
+    state.firstMutationAt = null;
     window.cancelAnimationFrame(state.frame);
     window.removeEventListener("beforeprint", beforePrint);
     window.removeEventListener("afterprint", afterPrint);

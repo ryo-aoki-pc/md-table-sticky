@@ -433,16 +433,18 @@ test("1 行目が短くても、その外に始まるセルの上の罫線を残
   assert.equal(rebuilt[3].top.width, 0);
 });
 
-test("結合セルの上に 1 マスでも空きがあれば、その上の罫線を残す", () => {
+test("結合セルの上に一部だけ空きがあれば、上の罫線を重ねない", () => {
   const grid = buildGrid(body([[td()], [td(1, 2)]]));
   const borders = [cellBorders(), cellBorders()];
   borders[1].top = border(2, "double", "rgb(40, 50, 60)");
   const rebuilt = rebuildBorders(grid, borders);
   assert.deepEqual(plain(grid.grid), [[0], [1, 1]]);
-  assert.deepEqual(plain(rebuilt[1].top), borders[1].top);
+  assert.equal(rebuilt[1].top.width, 0);
+  assert.equal(rebuilt[1].top.style, "none");
+  assert.deepEqual(plain(rebuilt[0].bottom), borders[1].top);
 });
 
-test("結合セルの左に 1 マスでも空きがあれば、その左の罫線を残す", () => {
+test("結合セルの左に一部だけ空きがあれば、左の罫線を重ねない", () => {
   const grid = buildGrid(body([[td(), td(2)], []]));
   const borders = [cellBorders(), cellBorders()];
   borders[1].left = border(4, "dashed", "rgb(70, 80, 90)");
@@ -450,7 +452,20 @@ test("結合セルの左に 1 マスでも空きがあれば、その左の罫�
   assert.equal(grid.cells[1].col, 1);
   assert.equal(grid.grid[0][0], 0);
   assert.equal(grid.grid[1][0], undefined);
-  assert.deepEqual(plain(rebuilt[1].left), borders[1].left);
+  assert.equal(rebuilt[1].left.width, 0);
+  assert.equal(rebuilt[1].left.style, "none");
+  assert.deepEqual(plain(rebuilt[0].right), borders[1].left);
+});
+
+test("結合セルの上か左がすべて空いていれば、外周の罫線を残す", () => {
+  const topGrid = buildGrid(body([[], [td(1, 2)]]));
+  const topBorders = [cellBorders()];
+  topBorders[0].top = border(2, "dashed", "rgb(10, 20, 30)");
+  assert.deepEqual(plain(rebuildBorders(topGrid, topBorders)[0].top), topBorders[0].top);
+  const leftGrid = buildGrid(body([[td(2)], []]));
+  const leftBorders = [cellBorders()];
+  leftBorders[0].left = border(3, "double", "rgb(40, 50, 60)");
+  assert.deepEqual(plain(rebuildBorders(leftGrid, leftBorders)[0].left), leftBorders[0].left);
 });
 
 test("同じ太さの共有罫線は上か左のセルの色と線種を使う", () => {

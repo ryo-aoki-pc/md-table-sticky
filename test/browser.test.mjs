@@ -492,6 +492,55 @@ async function waitFor(cdp, expression, message) {
   assert.fail(message);
 }
 
+async function checkContinuousMutations(cdp) {
+  const result = await cdp.evaluate(`(async () => {
+    const outside = document.createElement("div");
+    outside.hidden = true;
+    const table = document.createElement("table");
+    table.style.minWidth = "1800px";
+    const body = table.createTBody();
+    for (let r = 0; r < 6; r++) {
+      const row = body.insertRow();
+      for (let c = 0; c < 4; c++) {
+        const cell = document.createElement(r === 0 || c === 0 ? "th" : "td");
+        cell.textContent = r === 0 ? "見出し " + c : "値 " + r + "-" + c;
+        row.append(cell);
+      }
+    }
+    let timer;
+    let updates = 0;
+    try {
+      document.body.append(outside);
+      // 表の外の変化が 300 ms の待ちを延ばし続ける形にする。
+      await new Promise(resolve => {
+        timer = setInterval(() => {
+          outside.textContent = "時刻 " + (++updates);
+          if (updates === 1) resolve();
+        }, 100);
+      });
+      const started = performance.now();
+      document.querySelector(".file-content").append(table);
+      while (performance.now() - started < 1500) {
+        const cell = table.rows[0].cells[0];
+        if (window.__mdTableSticky.records.has(table) && cell.style.position === "sticky" && cell.style.getPropertyPriority("position") === "important") {
+          return { fixed: true, elapsed: performance.now() - started, updates };
+        }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      return { fixed: false, elapsed: performance.now() - started, updates };
+    } finally {
+      clearInterval(timer);
+      const wrapper = table.parentElement;
+      table.remove();
+      if (wrapper?.hasAttribute("data-md-table-sticky-wrap")) wrapper.remove();
+      outside.remove();
+    }
+  })()`);
+  assert.equal(result.fixed, true, "表の外が 100 ms ごとに変わり続けても新しい表を 1.5 秒以内に固定する");
+  assert.ok(result.elapsed < 1500, "新しい表を固定するまでの待ちを制限する");
+  assert.ok(result.updates >= 3, "固定を確かめるまで表の外の更新を続ける");
+}
+
 async function checkDynamic(cdp, bookmarklet) {
   await cdp.evaluate(bookmarklet);
   await cdp.evaluate(`(() => {
@@ -518,6 +567,7 @@ async function checkDynamic(cdp, bookmarklet) {
   await waitFor(cdp, "window.__mdTableSticky.records.has(window.__dynamicTable) && window.__dynamicTable.rows[0].cells[0].style.position === 'sticky'", "後から出た表が固定されない");
   assert.equal(await cdp.evaluate("window.__dynamicTable.parentElement.hasAttribute('data-md-table-sticky-wrap')"), true, "新しい表を自分の包みで囲む");
   await checkMutationScope(cdp);
+  await checkContinuousMutations(cdp);
   const print = await cdp.evaluate(`(() => {
     const wrapper = window.__dynamicTable.parentElement;
     window.dispatchEvent(new Event("beforeprint"));
