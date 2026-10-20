@@ -1220,6 +1220,7 @@ test("生成したブックマークレットを GitLab の DOM で確かめる"
   const directory = await mkdtemp(path.join(root, ".mts-browser-"));
   let child;
   let cdp;
+  let keepVisible;
   try {
     let launched;
     try {
@@ -1236,6 +1237,10 @@ test("生成したブックマークレットを GitLab の DOM で確かめる"
       assert.ok(target?.webSocketDebuggerUrl, "CDP のページがある");
       cdp = await CDP.connect(target.webSocketDebuggerUrl);
       await cdp.send("Page.enable");
+      // Windows の環境によっては、headless の Edge が開いてから約 20 秒でページを隠し、requestAnimationFrame が止まる。
+      // 1 秒ごとに前面へ出し、隠れても 2 秒以内に戻す。
+      const page = cdp;
+      keepVisible = setInterval(() => { page.send("Page.bringToFront").catch(() => {}); }, 1000);
     } catch (error) {
       await delay(100);
       const diagnostic = launched.diagnostics();
@@ -1377,6 +1382,7 @@ test("生成したブックマークレットを GitLab の DOM で確かめる"
       });
     }
   } finally {
+    clearInterval(keepVisible);
     if (cdp) cdp.close();
     await stopBrowser(child);
     await removeTemporary(directory);
