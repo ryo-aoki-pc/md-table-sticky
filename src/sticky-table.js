@@ -845,7 +845,7 @@
         event.preventDefault();
         event.stopPropagation();
         write(() => closeSearch(record));
-      } else if (event.key === "Enter" && event.target === input && !event.isComposing && !record.search.composing) {
+      } else if (event.key === "Enter" && event.target === input && !event.isComposing && event.keyCode !== 229 && !record.search.composing) {
         event.preventDefault();
         event.stopPropagation();
         moveSearch(record, event.shiftKey ? -1 : 1);
