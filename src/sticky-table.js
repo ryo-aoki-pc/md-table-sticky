@@ -672,7 +672,7 @@
     state.picking = record;
     const onClick = (event) => {
       const target = event.target;
-      if (record.bar && record.bar.buttons.pick.contains(target)) return;
+      if (record.bar && target instanceof Node && record.bar.buttons.pick.contains(target)) return;
       const cell = target && target.closest ? target.closest("td, th") : null;
       if (cell && cell.closest("table") === record.table) {
         event.preventDefault();
@@ -1351,7 +1351,7 @@
     panel.appendChild(anchor);
     const keydown = (event) => {
       if (event.key !== "Escape" || state.picking) return;
-      if (record.searchUi && record.searchUi.element.contains(event.target)) return;
+      if (record.searchUi && event.target instanceof Node && record.searchUi.element.contains(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       write(() => closeFloating());

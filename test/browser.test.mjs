@@ -1771,6 +1771,10 @@ async function checkSearchControls(cdp, t, version) {
   assert.equal(await cdp.evaluate('(() => { const { bar, anchor, record } = window.__searchCase; return !document.querySelector("[data-md-table-sticky-float]") && bar.nextElementSibling === record.columns.element && record.columns.element.nextElementSibling === anchor; })()'), true, 'Esc 2 回目で全幅を閉じて元の並びへ戻す');
   await cdp.evaluate('window.__searchCase.bar.querySelector(\'[data-md-table-sticky-action="search"]\').click()');
   assert.equal(await cdp.evaluate('(() => { const { bar } = window.__searchCase; const search = bar.nextElementSibling; return search.querySelector("input[type=search]").value === "" && search.querySelector("[data-md-table-sticky-search-count]").textContent === "" && !search.querySelector(\'[data-md-table-sticky-action="search-filter"]\').checked; })()'), true, '検索を閉じると欄・件数・絞り込みを空へ戻す');
+  // 検索の行を開いたまま、要素ではない window に Esc が届いても全幅表示を閉じる。
+  await cdp.evaluate('window.__searchCase.bar.querySelector(\'[data-md-table-sticky-action="float"]\').click()');
+  await frame();
+  assert.equal(await cdp.evaluate('(() => { const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented && !document.querySelector("[data-md-table-sticky-float]"); })()'), true, '検索の行を開いたまま window に届いた Esc でも全幅表示を閉じる');
   await cdp.evaluate('window.dispatchEvent(new Event("beforeprint"))');
   assert.equal(await cdp.evaluate('window.__searchCase.bar.nextElementSibling.getClientRects().length === 0'), true, '印刷の前は検索行を隠す');
   await cdp.evaluate('window.dispatchEvent(new Event("afterprint"))');
