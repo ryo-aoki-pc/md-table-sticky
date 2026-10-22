@@ -1319,7 +1319,7 @@
     const anchorRect = anchor.getBoundingClientRect();
     const placeholder = document.createElement("div");
     placeholder.setAttribute("data-md-table-sticky-placeholder", "");
-    placeholder.textContent = "この表は全幅で表示中（Esc で元に戻る）";
+    placeholder.textContent = "この表は全幅で表示中（Esc で元に戻す）";
     setStyles(placeholder, {
       height: Math.max(0, anchorRect.bottom - barRect.top) + "px", "box-sizing": "border-box",
       margin: window.getComputedStyle(record.bar.element).marginTop + " 0 " + window.getComputedStyle(anchor).marginBottom,
@@ -1795,7 +1795,7 @@
   scan();
   const skipped = Array.from(state.records.values()).filter((record) => record.skipped).length;
   const count = state.records.size - skipped;
-  let message = count ? "表の固定を有効にした（" + count + " 個の表）" : "固定できる表が見つからない（GitLab の Markdown の表が対象）";
-  if (skipped) message += "（" + skipped + " 個は対象外）";
+  const excluded = skipped ? "、" + skipped + " 個は対象外" : "";
+  const message = count ? "表の固定を有効にした（" + count + " 個の表" + excluded + "）" : "固定できる表が見つからない（GitLab の Markdown の表が対象" + excluded + "）";
   write(() => { state.notification = notice(message); });
 })();

@@ -262,7 +262,7 @@ GitLab の本文の外側にある `div.panel-content` は `contain: layout`、`
 
 背景は `div[data-md-table-sticky-float]` とし、`position: fixed; inset: 0; z-index: 2147483646; background: rgba(0, 0, 0, 0.4)` を当てる。右下の知らせより下に置き、`role="dialog"`・`aria-modal="true"`・`aria-label="表の全幅表示"` を付ける。中に `div.md[data-md-table-sticky-float-panel]` を作り、`position: absolute; left: 8px; right: 8px; top: 8px; max-height: calc(100vh - 16px)` を当てる。パネルは縦の flex、`box-sizing: border-box; padding: 8px; overflow: hidden` とし、背景・文字の色を GitLab の CSS 変数と代わりの値で決め、枠線・角の丸み・影を付ける。`.md` を付けて表の見た目と対象の判定を保つ。
 
-開く前に、検索の行と列のチェックボックスを含め、ツールバーの上端から表の枠の下端までの高さを測る。ツールバーの前に同じ高さの `div[data-md-table-sticky-placeholder]` を置き、「この表は全幅で表示中（Esc で元に戻る）」を点線の枠・小さい文字・中央揃えで出す。その後、ツールバー、検索の行、列のチェックボックス、表の枠をこの順でパネルへ移す。元の要素を移すので、表の子やイベントを作り直さない。代わりの要素で元の場所の高さを保つ。
+開く前に、検索の行と列のチェックボックスを含め、ツールバーの上端から表の枠の下端までの高さを測る。ツールバーの前に同じ高さの `div[data-md-table-sticky-placeholder]` を置き、「この表は全幅で表示中（Esc で元に戻す）」を点線の枠・小さい文字・中央揃えで出す。その後、ツールバー、検索の行、列のチェックボックス、表の枠をこの順でパネルへ移す。元の要素を移すので、表の子やイベントを作り直さない。代わりの要素で元の場所の高さを保つ。
 
 パネルの中でも表の枠は内容に応じた幅とし、パネルの幅を上限にする。ツールバー・検索の行・列のチェックボックス・表の枠に `align-self: flex-start` を当て、縦の flex による横への引き伸ばしを避ける。内容の長い表はパネルの幅まで広がり、その中で折り返す。表の枠の `max-height` を外し、`flex: 0 1 auto; min-height: 0` でパネルの残りの高さへ収める。GitLab の包みなら外の `.gl-table-shadow-overlay` を縦の flex にし、中の `[data-sticky-header]` の `max-height` を `none`、`min-height` を 0 にする。自分の包みなら、その包みを縮める。表の枠は余白を 0、`overscroll-behavior: contain` にする。これらの style も `originals` に覚えて戻す。通常の開閉では、その表だけをすぐ測り直し、固定・折り返し・横スクロールを継続する。
 

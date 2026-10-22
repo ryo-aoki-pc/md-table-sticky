@@ -2010,7 +2010,7 @@ test("生成したブックマークレットを GitLab の DOM で確かめる"
         await cdp.evaluate(bookmarklet);
         assert.equal(await cdp.evaluate("document.querySelectorAll('[data-md-table-sticky-float], [data-md-table-sticky-placeholder], [data-md-table-sticky-columns], [data-md-table-sticky-search]').length"), 0, "解除すると全幅の背景・代わりの要素・列のチェックボックス・検索行を消す");
         assert.equal(await cdp.evaluate("typeof window.__mdTableSticky"), "undefined", "固定の状態を消す");
-        assert.equal(await cdp.evaluate("document.querySelectorAll('[data-md-table-sticky-bar]').length"), 0, "固定を外すとツールバーも消す");
+        assert.equal(await cdp.evaluate("document.querySelectorAll('[data-md-table-sticky-bar]').length"), 0, "解除するとツールバーも消す");
         // mimic の高さのボタンは ResizeObserver で付け外しするので、表の寸法が戻って知らせが届くまで待つ。
         await cdp.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
         const restored = await cdp.evaluate("Array.from(document.querySelectorAll('.md'), md => md.innerHTML)");
